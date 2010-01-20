@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if (( $# < 1 )); then
+  echo "Usage: bk filename(s)"
+  exit 1
+fi
+
+for i in "$@"; do
+
+  cp -p $i $i.bk.$(date +%y%m%d%H%M%S)
+
+done

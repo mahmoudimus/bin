@@ -1,0 +1,19 @@
+#!/bin/bash
+
+#check to make sure that we're not already loading
+#TODO: make override variable
+if [[ ! -e /etc/mysql/my.cnf.loading_in_progress ]]; then
+    echo "Can't restore, not loading in progress"
+    exit 1
+fi
+
+#save state
+sudo mv /etc/mysql/my.cnf /etc/mysql/my.cnf.dbload
+
+#push the dbload configuration
+sudo mv /etc/mysql/my.cnf.loading_in_progress /etc/mysql/my.cnf
+
+#restart mysql
+sudo /etc/init.d/mysql restart
+
+

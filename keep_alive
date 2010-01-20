@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# keepalive
+# 
+# This is keepalive, a simple zsh script (may be hackable to work for other
+# shells) for keeping things running.
+# 
+# Usage:
+# $ keepalive <command> [command args]
+# $ keepalive ssh -N -L 8080:127.0.0.1:8080
+# 
+# The next three variables can be edited to adjust the action of the script
+
+# If the command dies ${threshold} times in succession without living more
+# than ${min_runtime} seconds the script will quit.
+threshold=5
+min_runtime=60
+
+# The script will sleep ${init_sleep_time} seconds after the first failure,
+# ${init_sleep_time}*2 after the second, ${init_sleep_time}*4 times after the 
+# third, and so on.
+init_sleep_time=5
+
+# ########################### #
+# No need to edit below here. #
+# ########################### #
+sleep_time=${init_sleep_time}
+times_until_fail=${threshold}
+
+until [[ $times_until_fail -le 0 ]]; do
+  time_started=$(date +%s)
+  $*
+  time_ended=$(date +%s)
+
+  # reset if it's lived longer than ${min_runtime}
+  if [[ $((${time_ended} - ${time_started})) -gt ${min_runtime} ]]; then
+    times_until_fail=${threshold}
+    sleep_time=${init_sleep_time}
+  fi
+
+  times_until_fail=$(($times_until_fail - 1))
+ 
+  echo
+  echo "-- $(date +"%d/%m/%y %H:%M:%S"): \`$*\` died!"
+  if [[ $times_until_fail -ge 1 ]]; then
+    echo "-- ${times_until_fail} more executions lasting less than ${min_runtime} seconds will result in job failure."
+    echo "-- Sleeping ${sleep_time} seconds..."
+    echo
+    sleep ${sleep_time}
+  fi
+  
+  sleep_time=$(($sleep_time * 2))
+done
+
+echo "-- Died too many times in too short a space of time. Exiting!"
