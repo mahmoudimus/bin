@@ -2,3 +2,6 @@ mvim
 vi
 vim
 gvim
+pylint
+pep8
+pychecker
