@@ -1,0 +1,2 @@
+Emacs flymake mode for python can automatically lint/pep8 check your python files.
+Run ~/bin/.scripts/py/linters.bash and it will automatically install the python lint files
