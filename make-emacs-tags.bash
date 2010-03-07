@@ -1,5 +1,7 @@
 #!/bin/bash
 : <<EOF
+# Code mostly stolen from: http://code.google.com/p/python-etags/
+
 Python-etags is a shell script of use to folks who use emacs for python programming.
 
 It runs etags over each entry in your python's sys.path.  Recall that sys.path is where
