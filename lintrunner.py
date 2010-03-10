@@ -102,10 +102,7 @@ class PylintRunner(LintRunner):
 
     @staticmethod
     def fixup_data(_line, data):
-        if data['error_type'].startswith('E'):
-            data['level'] = 'ERROR'
-        else:
-            data['level'] = 'WARNING'
+        data['level'] = 'WARNING'
         return data
 
     @property
