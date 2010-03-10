@@ -59,6 +59,8 @@ class LintRunner(object):
                                        '')
             fixed_data.update(cls.fixup_data(line, m.groupdict()))
             print cls.output_format % fixed_data
+        else:
+            print >> sys.stderr, "Line is broken: %s %s" % (cls, line)
 
     def run(self, filename):
         args = [self.command]
@@ -75,12 +77,12 @@ class PylintRunner(LintRunner):
       render.py:49: [C0301] Line too long (82/80)
       render.py:1: [C0111] Missing docstring
       render.py:3: [E0611] No name 'Response' in module 'werkzeug'
-      render.py:32: [C0111, render] Missing docstring """
+      render.py:32: [C0111, render] Missing docstring
+      jutils.py:859: [C0301] Line too long (107/80)"""
     output_matcher = re.compile(
         r'(?P<filename>[^:]+):'
         r'(?P<line_number>\d+):'
-        r'\s*\[(?P<error_type>[WECR])(?P<error_number>[^,]+),'
-        r'\s*(?P<context>[^\]]+)\]'
+        r'\s\[(?P<error_type>[WECR])(?P<error_number>[\d]+.+?\])'
         r'\s*(?P<description>.*)$')
     command = PYLINT_COMMAND
     sane_default_ignore_codes = set([
@@ -95,6 +97,7 @@ class PylintRunner(LintRunner):
         "R0904",  # Too many public methods
         "R0903",  # Too few public methods
         "R0201",  # Method could be a function
+        "W0141", # Used built in function map
         ])
 
     @staticmethod
