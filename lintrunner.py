@@ -22,6 +22,9 @@ class LintRunner(object):
     output_format = "%(level)s %(error_type)s%(error_number)s:" \
                     "%(description)s at %(filename)s line %(line_number)s."
 
+    nonum_output_format = "%(level)s: %(description)s at %(filename)s " \
+                          "line %(line_number)s."
+
     def __init__(self, virtualenv=None, ignore_codes=(),
                  use_sane_defaults=True):
         if virtualenv:
@@ -58,7 +61,11 @@ class LintRunner(object):
                                         'filename', 'line_number'),
                                        '')
             fixed_data.update(cls.fixup_data(line, m.groupdict()))
-            print cls.output_format % fixed_data
+            if not fixed_data['error_type'] and not fixed_data['error_number']:
+                print cls.nonum_output_format % fixed_data
+            else:
+
+                print cls.output_format % fixed_data
         else:
             print >> sys.stderr, "Line is broken: %s %s" % (cls, line)
 
@@ -78,11 +85,12 @@ class PylintRunner(LintRunner):
       render.py:1: [C0111] Missing docstring
       render.py:3: [E0611] No name 'Response' in module 'werkzeug'
       render.py:32: [C0111, render] Missing docstring
-      jutils.py:859: [C0301] Line too long (107/80)"""
+      jutils.py:859: [C0301] Line too long (107/80)
+      products.py:493: [E, Product.get_relevant_related_products] Class"""
     output_matcher = re.compile(
         r'(?P<filename>[^:]+):'
         r'(?P<line_number>\d+):'
-        r'\s\[(?P<error_type>[WECR])(?P<error_number>[\d]+.+?\])'
+        r'\s\[(?P<error_type>[WECR])(?P<error_number>[\d]+)?.+?\]'
         r'\s*(?P<description>.*)$')
     command = PYLINT_COMMAND
     sane_default_ignore_codes = set([
