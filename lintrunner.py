@@ -97,12 +97,15 @@ class PylintRunner(LintRunner):
         "R0904",  # Too many public methods
         "R0903",  # Too few public methods
         "R0201",  # Method could be a function
-        "W0141", # Used built in function map
+        "W0141",  # Used built in function map
         ])
 
     @staticmethod
     def fixup_data(_line, data):
-        data['level'] = 'WARNING'
+        if data['error_type'].startswith('E'):
+            data['level'] = 'ERROR'
+        else:
+            data['level'] = 'WARNING'
         return data
 
     @property
@@ -157,10 +160,7 @@ class Pep8Runner(LintRunner):
 
     @staticmethod
     def fixup_data(_line, data):
-        if 'W' in data['error_number']:
-            data['level'] = 'WARNING'
-        else:
-            data['level'] = 'ERROR'
+        data['level'] = 'WARNING'
         return data
 
     @property
