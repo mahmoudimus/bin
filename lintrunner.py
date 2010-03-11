@@ -19,7 +19,7 @@ class LintRunner(object):
     output_matcher = None
     #flymake: ("\\(.*\\) at \\([^ \n]+\\) line \\([0-9]+\\)[,.\n]" 2 3 nil 1)
     #or in non-retardate: r'(.*) at ([^ \n]) line ([0-9])[,.\n]'
-    output_format = "%(level)s %(error_type)s%(error_number)s:" \
+    output_format = "%(level)s %(error_type)s%(error_number)s: " \
                     "%(description)s at %(filename)s line %(line_number)s."
 
     nonum_output_format = "%(level)s: %(description)s at %(filename)s " \
