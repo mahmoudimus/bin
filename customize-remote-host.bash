@@ -12,7 +12,7 @@ if [ -e ${SSH_KEY_DIR}/id_dsa.pub ]; then
     export SSH_KEY=${SSH_KEY_DIR}/id_dsa.pub
 fi
 
-TO_DEPLOY="${HOME}/.bashrc ${HOME}/.alias.bash ${HOME}/.inputrc"
+TO_DEPLOY="${HOME}/.bashrc ${HOME}/.alias.bash ${HOME}/.inputrc ${HOME}/.screenrc"
 
 # get your key over there
 ssh ${TARGET_USERNAME}@${TARGET_HOST} "mkdir ~/.ssh; echo $(cat ${SSH_KEY}) >> ~/.ssh/authorized_keys2"
