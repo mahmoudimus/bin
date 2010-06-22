@@ -5,3 +5,6 @@ gvim
 pylint
 pep8
 pychecker
+*_flymake.py*
+*.pyc
+

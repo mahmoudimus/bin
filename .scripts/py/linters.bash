@@ -9,7 +9,7 @@ git clone git://github.com/jcrocholl/pep8.git
 pushd $(pwd)
 cd pep8
 python setup.py build
-sudo python setup.py install
+python setup.py install
 popd
 sudo rm -fr pep8
 ln -s $(which pep8) ~/bin/pep8
@@ -19,10 +19,10 @@ tar xzvf pychecker-0.8.18.tar.gz
 pushd $(pwd)
 cd pychecker-0.8.18
 python setup.py build
-sudo python setup.py install
+python setup.py install
 popd
-sudo rm -fr pychecker-0.8.18
+rm -fr pychecker-0.8.18
 ln -s $(which pychecker) ~/bin/pychecker
 
-sudo pip install pylint
+pip install pylint
 ln -s $(which pylint) ~/bin/pylint

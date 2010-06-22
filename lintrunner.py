@@ -40,7 +40,7 @@ class LintRunner(object):
     @property
     def operative_ignore_codes(self):
         if self.use_sane_defaults:
-            return self.ignore_codes ^ self.sane_default_ignore_codes
+            return self.ignore_codes | self.sane_default_ignore_codes
         else:
             return self.ignore_codes
 
@@ -145,7 +145,7 @@ class PycheckerRunner(LintRunner):
 
     @property
     def run_flags(self):
-        return '--no-deprecated', '-0186', '--only', '-#0'
+        return '--no-deprecated', '--only', '-#0'
 
 
 class Pep8Runner(LintRunner):
@@ -188,15 +188,26 @@ def main():
                       default=(),
                       help="error codes to ignore")
     options, args = parser.parse_args()
-    pylint = PylintRunner(virtualenv=options.virtualenv,
+    try:
+        pylint = PylintRunner(virtualenv=options.virtualenv,
+                              ignore_codes=options.ignore_codes)
+        pylint.run(args[0])
+    except Exception:
+        print "PYLINT FAILED!"
+
+    try:
+        pychecker = PycheckerRunner(virtualenv=options.virtualenv,
+                                    ignore_codes=options.ignore_codes)
+        pychecker.run(args[0])
+    except Exception:
+        print "PYCHECKER FAILED!"
+
+    try:
+        pep8 = Pep8Runner(virtualenv=options.virtualenv,
                           ignore_codes=options.ignore_codes)
-    pylint.run(args[0])
-    pychecker = PycheckerRunner(virtualenv=options.virtualenv,
-                                ignore_codes=options.ignore_codes)
-    pychecker.run(args[0])
-    pep8 = Pep8Runner(virtualenv=options.virtualenv,
-                      ignore_codes=options.ignore_codes)
-    pep8.run(args[0])
+        pep8.run(args[0])
+    except Exception:
+        print "PEP8 FAILED!"
 
 
 if __name__ == '__main__':
