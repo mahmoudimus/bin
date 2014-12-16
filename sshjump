@@ -1,0 +1,7 @@
+# -*- mode: sh; eval: (sh-set-shell "bash" nil nil); -*-
+#!/bin/bash
+set -x
+
+INSTANCE_VIP="${1}"
+PXY_CMD="ssh -qa 54.165.44.175 -W ${INSTANCE_VIP}:22"
+ssh -o ProxyCommand="${PXY_CMD}" ubuntu@${INSTANCE_VIP}

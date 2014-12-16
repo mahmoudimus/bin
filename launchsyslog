@@ -1,0 +1,5 @@
+sudo /usr/libexec/PlistBuddy -c "add :Sockets:NetworkListener dict" /System/Library/LaunchDaemons/com.apple.syslogd.plist
+sudo /usr/libexec/PlistBuddy -c "add :Sockets:NetworkListener:SockServiceName string syslog" /System/Library/LaunchDaemons/com.apple.syslogd.plist
+sudo /usr/libexec/PlistBuddy -c "add :Sockets:NetworkListener:SockType string dgram" /System/Library/LaunchDaemons/com.apple.syslogd.plist
+sudo launchctl unload /System/Library/LaunchDaemons/com.apple.syslogd.plist
+sudo launchctl load /System/Library/LaunchDaemons/com.apple.syslogd.plist
