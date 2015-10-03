@@ -12,7 +12,7 @@ function isVersion() {
 }
 
 function isSystemIntegrityProtectionEnabled() {
-    return $(csrutil status | grep -q "enabled.")
+    return $(csrutil status | grep -q "enabled.$")
 }
 
 function isElCapitan()
