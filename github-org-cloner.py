@@ -52,8 +52,10 @@ def _parse_link_header(links):
 
 
 # 'https://api.github.com/orgs/balanced-cookbooks/repos'
-REPO_URLS = [sys.argv[1]]
-PAGE = 1
+PAGE = 200
+REPO_URLS = ["https://api.github.com/orgs/{org}/repos?per_page={page}".format(
+    org=sys.argv[1].strip(),
+    page=PAGE)]
 ERRORS = []
 config = ConfigParser.ConfigParser()
 cfgfile = os.path.expanduser('~/.github.cfg')
@@ -92,38 +94,63 @@ for url in REPO_URLS:
         next_link = links['next']
         REPO_URLS.append(next_link)
     except KeyError:
-        pass
+        next_link = None
 
+    print '+++ Status: Repo urls: ', len(REPO_URLS)
+    print '+++ Status: Next link: ', next_link
     json_data = res.json()
 
     for repo in json_data:
         url = repo['ssh_url']
         repo_name = repo['name']
-        if os.path.exists(repo_name):
-            cwd = os.path.join(os.getcwd(), repo_name)
-            git_ref = subprocess.check_output(
-                ['git', 'symbolic-ref', 'HEAD'], cwd=cwd
-            )
-            _, _, current_branch = git_ref.strip().rpartition('/')
-            print 'Repo {} already exists, updating {}'.format(
-                repo_name,
-                current_branch
-            )
-            cmds = [
-                ['git', 'pull', 'origin', current_branch],
-                ['git', 'pull'],
-            ]
-            for c in cmds:
-                retcode = subprocess.call(c, cwd=cwd)
-                if retcode != 0:
-                    ERRORS.append({
-                        'repo': repo_name,
-                        'error_code': retcode,
-                    })
-                    error("Couldn't update: {}. Moving on".format(repo_name))
-        else:
+        if not os.path.exists(repo_name):
             print 'Cloning {}'.format(repo_name)
             subprocess.check_call(['git', 'clone', url])
+
+        cwd = os.path.join(os.getcwd(), repo_name)
+        branch_list = subprocess.check_output(
+                ' '.join(['git', 'branch', '-r', '--sort=-committerdate', '|',
+                          'head', '-100']),
+                cwd=cwd,
+                shell=True)
+        branches = [b.strip().partition('/')[-1] for b in branch_list.split('\n')]
+        default_branch = branches[0]
+        branches = list(set(branches))
+
+        git_ref = subprocess.check_output(
+            ['git', 'symbolic-ref', 'HEAD'], cwd=cwd
+        )
+        _, _, current_branch = git_ref.strip().rpartition('/')
+        print 'Repo {} already exists, updating {}'.format(
+            repo_name,
+            current_branch
+        )
+        cmds = [['git', 'checkout', b] for b in branches]
+        cmds.extend(['git', 'submodule', 'update', '--init', '--recursive'])
+        cmds.extend([
+            ['git', 'pull', 'origin', current_branch],
+            ['git', 'pull'],
+        ])
+        for c in cmds:
+            retcode = subprocess.call(c, cwd=cwd)
+            if retcode != 0:
+                ERRORS.append({
+                    'repo': repo_name,
+                    'error_code': retcode,
+                })
+                error("Couldn't update: {}. Moving on".format(repo_name))
+
+        cmds = ['git', 'checkout', default_branch]
+        cmds.extend(['git', 'fetch', '--all'])
+        cmds.extend(['git', 'clone', url.replace('.git', '.wiki.git'), 'wiki'])
+        for c in cmds:
+            retcode = subprocess.call(c, cwd=cwd)
+            if retcode != 0:
+                ERRORS.append({
+                    'repo wiki': repo_name,
+                    'error_code': retcode,
+                })
+                error("Couldn't update wiki: {}. Moving on".format(repo_name))
 
 
 for e in ERRORS:

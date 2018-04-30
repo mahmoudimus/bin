@@ -9,3 +9,4 @@ pychecker
 *.pyc
 
 JDownloader 2.0/
+node_modules
