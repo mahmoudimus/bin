@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# https://unix.stackexchange.com/a/184943/14442
+# rsync -aP --remove-source-files $src $dst && rm -r $src
+
+# https://unix.stackexchange.com/a/557688/14442
+# handles many source arguments
+rsync -aP --remove-source-files "$@" && rm -rf "${@:1:$#-1}"
+
