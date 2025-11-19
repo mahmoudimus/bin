@@ -1,0 +1,34 @@
+#!/bin/bash
+IFS='::' read -a array <<< "$1"
+
+indexes=("${!array[@]}")
+
+prefix=""
+middle=""
+suffix=""
+rettype=""
+if [ -z "$2" ]; then
+    rettype="void"
+fi
+
+last_index=${indexes[${#indexes[@]}-1]}  # Get the last element properly
+
+for index in "${indexes[@]}"
+do
+    #echo "$index ${array[index]}"
+    if [[ $index == "$last_index" ]]; then
+    #echo "last"
+    middle="$rettype ${array[index]};"
+    elif [[ -n "${array[index]}" ]]; then
+    #echo "not empty"
+    prefix="${prefix}struct ${array[index]}{"
+    suffix="${suffix}};"
+    fi
+done
+
+echo "$prefix$middle$suffix $rettype $1{}";
+echo "$prefix$middle$suffix $rettype $1{}" \
+    | g++ -x c++ - -o - -S -w \
+    | grep '^_' \
+    | sed -e 's/:.*//' 
+    

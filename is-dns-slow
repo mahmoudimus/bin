@@ -1,0 +1,224 @@
+#!/bin/bash
+# -*- mode: shell-script-mode -*-
+#
+# is-dns-slow: Diagnose DNS resolution speed, path, EDNS behavior,
+#              IPv4 vs IPv6, caching, network hops (with mtr/traceroute),
+#              and assemble an LLM prompt.
+#
+# Usage: chmod +x is-dns-slow && ./is-dns-slow [--capture]
+#   --capture : run a short packet capture (requires sudo & tcpdump)
+#
+# -*- mode: shell-script-mode -*-
+#
+# is-dns-slow: Diagnose DNS resolution speed, path, EDNS behavior,
+#              IPv4 vs IPv6, caching, network hops (with mtr/traceroute),
+#              and assemble an LLM prompt.
+#
+# Usage: chmod +x is-dns-slow && ./is-dns-slow [--capture]
+#   --capture : run a short packet capture (requires sudo & tcpdump)
+#
+set -euo pipefail
+
+HOST="google.com"
+SERVERS=( "9.9.9.9" "8.8.4.4" "1.1.1.1" "8.8.8.8" )
+EXTRA_SERVERS=( "208.67.222.222" "185.228.168.168" "84.200.69.80" )
+THRESHOLD_MS=100
+
+CAPTURE=false
+if [[ "${1-}" == "--capture" ]]; then
+  CAPTURE=true
+fi
+
+PROMPT_SUMMARY=""
+PROMPT_RAW=""
+
+timestamp() { date +"%Y-%m-%d %H:%M:%S %Z"; }
+
+echo "=== DNS diagnostics for ${HOST} at $(timestamp) ==="
+echo
+
+check_caching() {
+  echo "Checking for local DNS caching services…"
+  for svc in dnsmasq unbound systemd-resolved; do
+    if pgrep -x "$svc" >/dev/null; then
+      echo "  • Found caching service: $svc"
+      PROMPT_SUMMARY+="Local cache: $svc running\n"
+      return
+    fi
+  done
+  echo "  ⚠️  No local DNS cache detected (dnsmasq/unbound/systemd-resolved)."
+  PROMPT_SUMMARY+="Local cache: none\n"
+}
+check_caching
+echo
+
+run_tests() {
+  local server=$1
+  echo "→ Testing ${server}"
+
+  # standard query + timings
+  local dig_out qt wall
+  dig_out="$(dig +nocmd "${HOST}" @"${server}" +noall +stats 2>&1)"
+  qt="$(awk '/^;; Query time:/ {print $4}' <<<"$dig_out")"
+  wall="$( { time dig +nocmd "${HOST}" @"${server}" +noall +stats >/dev/null; } 2>&1 \
+            | awk '/^real/ {print $2}')"
+
+  printf "  • %-11s → [%3s ms]   wall: %s\n" "$server" "${qt:-N/A}" "$wall"
+  [[ -n "$qt" && "$qt" -gt $THRESHOLD_MS ]] && echo "    ⚠️  ${server} slow (> ${THRESHOLD_MS} ms)"
+
+  # IPv4-only / IPv6-only
+  local v4 v6 edns
+  v4="$(dig +time=2 +tries=1 "${HOST}" @"${server}" -4 +noall +stats 2>&1 \
+         | awk '/^;; Query time:/ {print $4}')"
+  printf "     -4 → %sms\n" "${v4:-N/A}"
+  v6="$(dig +time=2 +tries=1 "${HOST}" @"${server}" -6 +noall +stats 2>&1 \
+         | awk '/^;; Query time:/ {print $4}')"
+  printf "     -6 → %sms\n" "${v6:-N/A}"
+
+  # EDNS buffer test
+  edns="$(dig +bufsize=4096 +noall +stats "${HOST}" @"${server}" 2>&1 \
+           | awk '/^;; Query time:/ {print $4}')"
+  printf "  EDNS→ %sms\n" "${edns:-N/A}"
+
+  # network path: prefer mtr with sudo, else traceroute fallback
+  if command -v mtr >/dev/null; then
+    if [[ $EUID -ne 0 ]]; then
+      echo "  ⚠️  'mtr' needs root for raw sockets; falling back to traceroute"
+      if command -v traceroute >/dev/null; then
+        # macOS traceroute: only 1 probe per hop, max 8 hops, 2s wait
+        traceroute -n -p 53 -q 1 -m 8 -w 2 "${server}" | sed 's/^/    /'
+        PROMPT_RAW+="Network path (traceroute):\n$(traceroute -n -p 53 -q 1 -m 8 -w 2 "${server}")\n\n"
+      else
+        echo "    ⚠️  Please install 'traceroute' or run this script as root."
+        PROMPT_RAW+="Network path: none (missing traceroute)\n\n"
+      fi
+    else
+      local mtr_out
+      mtr_out="$(sudo mtr --report --report-cycles=3 --udp --port 53 --no-dns "${server}")"
+      echo "$mtr_out" | sed 's/^/    /'
+      PROMPT_RAW+="Network path (mtr):\n${mtr_out}\n\n"
+    fi
+  else
+    echo "  ⚠️  Install 'mtr' to auto-trace routing hops, or use traceroute."
+    PROMPT_RAW+="Network path: none (mtr missing)\n\n"
+  fi
+
+  echo
+  PROMPT_SUMMARY+="${server}: default=${qt:-N/A}ms, -4=${v4:-N/A}ms, -6=${v6:-N/A}ms, edns=${edns:-N/A}ms, wall=${wall}\n"
+  PROMPT_RAW+="=== ${server} ===
+${dig_out}
+IPv4-only: ${v4} ms
+IPv6-only: ${v6} ms
+EDNS(4096): ${edns} ms
+
+"
+}
+
+# run main servers
+for srv in "${SERVERS[@]}"; do
+  run_tests "$srv"
+done
+
+# run extra servers
+echo "→ Testing extra public resolvers…"
+for srv in "${EXTRA_SERVERS[@]}"; do
+  run_tests "$srv"
+done
+
+# optional packet capture
+if $CAPTURE; then
+  if command -v tcpdump >/dev/null; then
+    echo "Starting 10-second DNS packet capture to dns.pcap (requires sudo)…"
+    sudo timeout 10 tcpdump -i any port 53 -w dns.pcap \
+      && echo "→ Saved to dns.pcap"
+    PROMPT_RAW+="Packet capture: dns.pcap (10s)\n\n"
+  else
+    echo "⚠️  tcpdump not installed; skipping capture."
+  fi
+  echo
+fi
+
+# final LLM prompt
+cat <<EOF
+
+-- COPY THIS PROMPT FOR AN LLM --
+
+I ran DNS diagnostics for ${HOST} at $(timestamp).
+
+Summary (server: default ms, IPv4 ms, IPv6 ms, EDNS ms, wall-clock):
+${PROMPT_SUMMARY}
+
+Raw outputs and paths:
+
+${PROMPT_RAW}
+
+Please help me diagnose why DNS resolution might be slow on my network, advice on which upstream servers or local caching strategies to deploy, and steps to isolate any VPN- or IPv6-related issues.
+
+EOF
+
+# ignore the following code:
+# -*- mode: shell-script-mode -*-
+#!/bin/bash
+#
+# is-dns-slow: Diagnose DNS resolution speed and generate an LLM prompt.
+#
+# Usage: chmod +x is-dns-slow && ./is-dns-slow
+# Configuration
+# HOST="google.com"
+# SERVERS=( "9.9.9.9" "8.8.4.4" "1.1.1.1" "8.8.8.8" )
+# THRESHOLD_MS=100  # above this, consider DNS "slow"
+
+# # Prepare accumulators for the LLM prompt
+# PROMPT_SUMMARY=""
+# PROMPT_RAW=""
+
+# echo "DNS diagnostics for ${HOST}:"
+# echo
+
+# for SERVER in "${SERVERS[@]}"; do
+#   # 1) Run dig and capture output
+#   DIG_OUTPUT="$(dig +nocmd "${HOST}" @"${SERVER}" +noall +stats 2>&1)"
+
+#   # 2) Extract the numeric query time in ms
+#   QUERY_TIME_MS="$(printf '%s\n' "${DIG_OUTPUT}" \
+#     | awk '/^;; Query time:/ {print $4}')"
+
+#   # 3) Measure wall-clock time
+#   TIME_OUTPUT="$( { time dig +nocmd "${HOST}" @"${SERVER}" +noall +stats >/dev/null; } 2>&1)"
+#   REAL_TIME="$(printf '%s\n' "${TIME_OUTPUT}" \
+#     | awk '/^real/ {print $2}')"
+
+#   # 4) Print per-server result
+#   printf "  • %-11s → Query: %4s ms   Wall-clock: %s\n" \
+#          "${SERVER}" "${QUERY_TIME_MS:-N/A}" "${REAL_TIME}"
+
+#   # 5) Note slow servers
+#   if [[ -n "${QUERY_TIME_MS}" && "${QUERY_TIME_MS}" -gt "${THRESHOLD_MS}" ]]; then
+#     echo "    ⚠️  ${SERVER} is slow (> ${THRESHOLD_MS} ms)"
+#   else
+#     echo
+#     echo "✅ DNS response for ${SERVER} is within acceptable range (<${THRESHOLD_MS} ms)."
+#   fi
+#   echo
+
+#   # 6) Append to LLM prompt accumulators
+#   PROMPT_SUMMARY+="${SERVER}: ${QUERY_TIME_MS:-N/A} ms, ${REAL_TIME}"$'\n'
+#   PROMPT_RAW+="=== ${SERVER} ==="$'\n'"${DIG_OUTPUT}"$'\n'"Shell timing:"$'\n'"${TIME_OUTPUT}"$'\n\n'
+# done
+
+# # 7) Generate the LLM prompt
+# cat <<EOF
+
+# -- COPY THIS PROMPT FOR AN LLM --
+
+# I just ran DNS diagnostics for ${HOST} against multiple upstream servers:
+
+# ${PROMPT_SUMMARY}
+
+# Raw outputs:
+
+# ${PROMPT_RAW}
+
+# Please help me diagnose why DNS resolution might be slow on my network, suggest which upstream servers or local caching strategies to test, and steps to further isolate VPN or IPv6-related issues.
+
+# EOF

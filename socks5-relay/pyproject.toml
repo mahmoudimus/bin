@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socks5-relay"
+version = "0.1.0"
+description = "A simple SOCKS5 relay"
+dependencies = ["pysocks"]
+
+[project.scripts]
+socks5-relay = "socks_relay:main"

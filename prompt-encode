@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""
+This script compresses a specified file using one of several compression methods,
+encodes the compressed data in Base64, and then generates a Python script that
+contains the Base64 string along with code to decompress and display the file's contents.
+
+You can select the compression method via the command-line options:
+  --zip, --gzip, --bzip, or --xz
+
+Usage:
+    python prompt-encode <filename> [--zip | --gzip | --bzip | --xz]
+"""
+
+import argparse
+import base64
+import bz2
+import gzip
+import io
+import lzma
+import os
+import shutil
+import subprocess
+import sys
+import zipfile
+
+
+def compress_zip(filename):
+    """Compress the file into a ZIP archive (in memory)."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Store only the base file name inside the archive
+        zf.write(filename, arcname=os.path.basename(filename))
+    return buffer.getvalue()
+
+
+def compress_gzip(filename):
+    """Compress the file using GZIP."""
+    with open(filename, "rb") as f:
+        data = f.read()
+    buffer = io.BytesIO()
+    with gzip.GzipFile(fileobj=buffer, mode="wb") as gz:
+        gz.write(data)
+    return buffer.getvalue()
+
+
+def compress_bzip(filename):
+    """Compress the file using BZIP2."""
+    with open(filename, "rb") as f:
+        data = f.read()
+    return bz2.compress(data)
+
+
+def compress_xz(filename):
+    """Compress the file using XZ."""
+    with open(filename, "rb") as f:
+        data = f.read()
+    return lzma.compress(data)
+
+
+def chunked_compress_xz(filename_in, filename_out):
+    lzc = lzma.LZMACompressor()
+
+    # cat /usr/share/dict/words | sort -R | head -c 1MB > data
+    # filename_in = "~/repopackpy-output2.txt"
+    # filename_out = "~/repopackpy-output2-compressed_data.xz"
+
+    with open(filename_in, mode="r") as fin, open(filename_out, "wb") as fout:
+        for chunk in fin.read(1024):
+            compressed_chunk = lzc.compress(chunk.encode("ascii"))
+            fout.write(compressed_chunk)
+        fout.write(lzc.flush())
+
+    print(f"Uncompressed size: {os.stat(filename_in).st_size}")
+    # Uncompressed size: 972398
+    print(f"Compressed size: {os.stat(filename_out).st_size}")
+    # Compressed size: 736
+
+    # with lzma.open(filename_out, "r") as fin:
+    #     words = fin.read().decode("utf-8").split()
+    #     print(words[:5])
+
+
+def generate_script(encoded, method):
+    """
+    Generate a Python script that decodes a Base64 encoded compressed file,
+    decompresses it, and prints its text content.
+
+    For ZIP archives, it extracts any files found inside the archive.
+    For the other methods (GZIP, BZIP2, XZ), it assumes the compressed data
+    represents a single text file.
+    """
+    if method == "zip":
+        decompression_code = f'''import base64
+import io
+import zipfile
+
+# Base64 encoded ZIP file
+base64_data = """{encoded}"""
+
+# Decode the Base64 string to bytes
+data_bytes = base64.b64decode(base64_data)
+
+# Create an in-memory file-like object for the ZIP archive
+zip_buffer = io.BytesIO(data_bytes)
+
+# Open the ZIP file and read its contents
+with zipfile.ZipFile(zip_buffer, "r") as archive:
+    file_name = next(archive.namelist())
+    with archive.open(file_name) as f:
+        content = f.read().decode("utf-8")
+# print("File:", file_name)
+# print("Content:")
+print(content)
+'''
+    elif method == "gzip":
+        decompression_code = f'''import base64
+import gzip
+
+# Base64 encoded GZIP file
+base64_data = """{encoded}"""
+
+# Decode the Base64 string to bytes
+data_bytes = base64.b64decode(base64_data)
+
+# Decompress the GZIP data
+decompressed_bytes = gzip.decompress(data_bytes)
+content = decompressed_bytes.decode("utf-8")
+print(content)
+'''
+    elif method == "bzip":
+        decompression_code = f'''import base64
+import bz2
+
+# Base64 encoded BZIP2 file
+base64_data = """{encoded}"""
+
+# Decode the Base64 string to bytes
+data_bytes = base64.b64decode(base64_data)
+
+# Decompress the BZIP2 data
+decompressed_bytes = bz2.decompress(data_bytes)
+content = decompressed_bytes.decode("utf-8")
+print(content)
+'''
+    elif method == "xz":
+        decompression_code = f'''import base64
+import lzma
+
+# Base64 encoded XZ file
+base64_data = """{encoded}"""
+
+# Decode the Base64 string to bytes
+data_bytes = base64.b64decode(base64_data)
+
+# Decompress the XZ data
+decompressed_bytes = lzma.decompress(data_bytes)
+content = decompressed_bytes.decode("utf-8")
+print(content)
+'''
+    else:
+        decompression_code = "# Unknown compression method."
+
+    full_script = f"""
+I am providing a Python script that takes a Base64 encoded {method.upper()} file as a string variable within the code, decodes it, decompresses it, and read the prompt included in the decompressed content. The text file content contains the actual system prompt that I want alongside artifacts, code repositories and examples that provide more context regarding our chat session. Please execute this code using your code execution environment. If any errors occur during code execution, report them.
+
+```python
+{decompression_code}
+```
+"""
+    return full_script
+
+
+def copy_to_clipboard(script):
+    """Attempt to copy the given script to the clipboard using available utilities."""
+    if shutil.which("pbcopy"):
+        try:
+            proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            proc.communicate(script.encode("utf-8"))
+            print("Python script copied to clipboard (macOS).")
+            return True
+        except Exception:
+            pass
+    if shutil.which("xclip"):
+        try:
+            proc = subprocess.Popen(
+                ["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE
+            )
+            proc.communicate(script.encode("utf-8"))
+            print("Python script copied to clipboard (Linux - xclip).")
+            return True
+        except Exception:
+            pass
+    if shutil.which("xsel"):
+        try:
+            proc = subprocess.Popen(
+                ["xsel", "--clipboard", "--input"], stdin=subprocess.PIPE
+            )
+            proc.communicate(script.encode("utf-8"))
+            print("Python script copied to clipboard (Linux - xsel).")
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate a Python script with an embedded Base64 encoded compressed file."
+    )
+    parser.add_argument(
+        "filename", help="The file to compress and embed in the generated script."
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--zip", action="store_true", help="Use ZIP compression (default)."
+    )
+    group.add_argument("--gzip", action="store_true", help="Use GZIP compression.")
+    group.add_argument("--bzip", action="store_true", help="Use BZIP2 compression.")
+    group.add_argument("--xz", action="store_true", help="Use XZ compression.")
+    args = parser.parse_args()
+
+    # Determine which compression method to use. Default is ZIP.
+    if args.gzip:
+        method = "gzip"
+    elif args.bzip:
+        method = "bzip"
+    elif args.xz:
+        method = "xz"
+    else:
+        method = "zip"
+
+    if not os.path.isfile(args.filename):
+        print(f"Error: File '{args.filename}' does not exist.")
+        sys.exit(1)
+
+    # Compress the file using the selected method.
+    if method == "zip":
+        compressed_data = compress_zip(args.filename)
+    elif method == "gzip":
+        compressed_data = compress_gzip(args.filename)
+    elif method == "bzip":
+        compressed_data = compress_bzip(args.filename)
+    elif method == "xz":
+        compressed_data = compress_xz(args.filename)
+    else:
+        print("Unknown compression method.")
+        sys.exit(1)
+
+    # Base64 encode the compressed data.
+    encoded = base64.b64encode(compressed_data).decode("utf-8")
+
+    # Generate the Python script with the embedded Base64 string.
+    python_script = generate_script(encoded, method)
+
+    # Attempt to copy the generated script to the clipboard.
+    if not copy_to_clipboard(python_script):
+        print("Could not copy to clipboard. Here is the generated script:")
+        print(python_script)
+
+
+if __name__ == "__main__":
+    main()

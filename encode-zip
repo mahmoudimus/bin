@@ -1,0 +1,73 @@
+# -*- mode: sh -*-
+#!/bin/bash
+
+# Check if the user provided a file name
+if [ -z "$1" ]; then
+    echo "Usage: $0 <filename>"
+    exit 1
+fi
+
+FILENAME="$1"
+
+# Create a ZIP file containing the specified file
+zip -q prompt.zip "$FILENAME"
+
+# Base64 encode the ZIP file contents
+BASE64_ENCODED=$(base64 < prompt.zip)
+
+# Generate the Python script
+PYTHON_SCRIPT=$(cat <<EOF
+I am providing a Python script that takes a Base64 encoded ZIP file as a string
+variable within the code, decodes it, decompresses it, and extracts the content
+of any text files it finds. The text file content contains the actual system
+prompt that I want alongside artifacts, code repositories and examples that
+provide more context regarding our chat session. Please execute this code using
+your code execution environment. If any errors occur during code execution,
+report them.
+
+After execution, signal that you are ready to begin by stating that you have
+decoded the information and are ready to assist.
+
+\`\`\`python
+import base64
+import io
+import zipfile
+
+# Base64 encoded ZIP file
+base64_zip_str = """$BASE64_ENCODED"""
+
+# Decode the Base64 string to bytes
+zip_bytes = base64.b64decode(base64_zip_str)
+
+# Create an in-memory file-like object
+zip_buffer = io.BytesIO(zip_bytes)
+
+# Open the ZIP file and read its contents
+with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+    for file_name in zip_file.namelist():
+        with zip_file.open(file_name) as extracted_file:
+            content = extracted_file.read().decode("utf-8")
+            print("File:", file_name)
+            print("Content:")
+            print(content)
+\`\`\`
+EOF
+)
+
+# Copy the script to clipboard (macOS: pbcopy, Linux: xclip or xsel)
+if command -v pbcopy &> /dev/null; then
+    echo "$PYTHON_SCRIPT" | pbcopy
+    echo "Python script copied to clipboard (macOS)."
+elif command -v xclip &> /dev/null; then
+    echo "$PYTHON_SCRIPT" | xclip -selection clipboard
+    echo "Python script copied to clipboard (Linux - xclip)."
+elif command -v xsel &> /dev/null; then
+    echo "$PYTHON_SCRIPT" | xsel --clipboard --input
+    echo "Python script copied to clipboard (Linux - xsel)."
+else
+    echo "Could not copy to clipboard. Here is the generated script:"
+    echo "$PYTHON_SCRIPT"
+fi
+
+# Cleanup
+rm -f prompt.zip
